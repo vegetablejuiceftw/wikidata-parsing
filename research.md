@@ -51,3 +51,7 @@ tokens = [
 4017443  George Washington  None               []           0               2            painting by Rembrandt Peale  (CAM 1884.365)     []  
 ```
 
+zgrep  -m 1 'Pew Charitable' wikidata-20220103-all.json.gz
+
+['addition', 'Andrew', 'his original research findings', 'top peer-reviewed journals', 'Nature', 'Cell', 'Neuron', 'Current Biology', 'His work', 'major publications', 'Science magazine', 'Discover magazine', 'Scientific American', 'Time', 'the New York Times', 'He', 'a regular member', 'Health', 'a Fellow', 'the McKnight Foundation', 'the Pew Charitable Trusts']
+{'Health', 'Nature', 'Time', 'addition', 'Science magazine', 'Cell', 'the New York Times', 'Andrew', 'He'}
