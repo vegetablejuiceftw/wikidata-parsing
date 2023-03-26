@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from tqdm.auto import tqdm
 
+import tarfile
+
 
 @dataclass
 class FileChunkReader:
@@ -12,15 +14,29 @@ class FileChunkReader:
     chunk_size: int = 1024 * 1024 * 8
 
     def __iter__(self):
-        if self.file_path.endswith('.gz'):
-            with gzip.open(self.file_path, 'rb', encoding=None, errors=None, newline=None, compresslevel=1) as file:
-                for c in self.loop(file):  # noqa
+        file_size = os.path.getsize(self.file_path.split(':')[0])
+
+        if 'tar.gz' in self.file_path:
+            file_path, file_name = self.file_path.split(':')
+            with tarfile.open(file_path, 'r:gz') as tar:  # bufsize
+                file = tar.extractfile(file_name)  # noqa
+                file.seek(0, os.SEEK_END)
+                file_size = file.tell()
+                file.seek(0)
+                file.fileobj = file
+                for c in self.loop(file, file_size):  # noqa
                     yield c
-        if self.file_path.endswith('.bz2'):
+
+        elif self.file_path.endswith('.gz'):
+            with gzip.open(self.file_path, 'rb', encoding=None, errors=None, newline=None, compresslevel=1) as file:
+                for c in self.loop(file, file_size):  # noqa
+                    yield c
+
+        elif self.file_path.endswith('.bz2'):
             with bz2.open(self.file_path, 'rb', encoding=None, errors=None, newline=None, compresslevel=1) as file:
                 file: bz2.BZ2File
                 file.fileobj = file._fp  # noqa
-                for c in self.loop(file):  # noqa
+                for c in self.loop(file, file_size):  # noqa
                     yield c
 
     def arrive(self, file):
@@ -29,14 +45,14 @@ class FileChunkReader:
     def depart(self, file):
         pass
 
-    def loop(self, file):
+    def loop(self, file, file_size):
         self.arrive(file)
-        for chunk in self.read_chunks(file):
+        for chunk in self.read_chunks(file, file_size):
             yield chunk
         self.depart(file)
 
-    def read_chunks(self, file):
-        start_pos, file_size = 0, os.path.getsize(self.file_path)
+    def read_chunks(self, file, file_size):
+        start_pos = 0
         if self.fraction is not None:
             file_size = int(file_size * self.fraction)
         pbar = tqdm(total=file_size, unit='B', unit_scale=True, desc='Processing chunks', mininterval=0.5)
@@ -63,6 +79,18 @@ class FileChunkReaderGZip(FileChunkReader):
 
 
 import orjson
+import pyarrow as pa
+
+schema_wikidata = pa.schema([
+    pa.field(name="id", type=pa.string()),
+    pa.field(name="label", type=pa.string()),
+    pa.field(name="sitelink", type=pa.string()),
+    pa.field(name="sitebadges", type=pa.list_(pa.string())),
+    pa.field(name="sitelink_count", type=pa.int64()),
+    pa.field(name="label_count", type=pa.int64()),
+    pa.field(name="description", type=pa.string()),
+    pa.field(name="aliases", type=pa.list_(pa.string())),
+])
 
 
 def parse_wikidata_simple(chunk: bytes):
@@ -106,8 +134,24 @@ def parse_wikidata(chunk: bytes):
     return tuple(data)
 
 
-import lance
-import pandas as pd
+schema_wikidata_5m_entity = pa.schema([
+    pa.field(name="id", type=pa.string()),
+    pa.field(name="label", type=pa.string()),
+    pa.field(name="aliases", type=pa.list_(pa.string())),
+])
+
+
+def parse_wikidata_5m_entity(chunk: bytes):
+    data = []
+    for row in chunk.decode('utf-8').splitlines():
+        idx, label, *aliases = row
+        data.append(dict(
+            id=idx,
+            label=label,
+            aliases=aliases,
+        ))
+
+    return tuple(data)
 
 
 def combine_chunks(chunks, item_count=1024 * 1024):
@@ -121,31 +165,32 @@ def combine_chunks(chunks, item_count=1024 * 1024):
         yield result
 
 
-import pyarrow as pa
-
-schema_wikidata = pa.schema([
-    pa.field(name="id", type=pa.string()),
-    pa.field(name="label", type=pa.string()),
-    pa.field(name="sitelink", type=pa.string()),
-    pa.field(name="sitebadges", type=pa.list_(pa.string())),
-    pa.field(name="sitelink_count", type=pa.int64()),
-    pa.field(name="label_count", type=pa.int64()),
-    pa.field(name="description", type=pa.string()),
-    pa.field(name="aliases", type=pa.list_(pa.string())),
-])
-
 if __name__ == '__main__':
-    manager = mp.Manager()
-    lock = manager.Lock()
+    import lance
+    import pandas as pd
 
-    file_path = '/home/fred/Downloads/wikidata-20220103-all.json.gz'
-    # file_path = '/home/fred/Downloads/latest-all.json.bz2'
-    file_path_output = 'wikidata-20220103-5%.lance'
+    # file_path = '.data/latest-all.json.gz'  # 27mb/s
+    # # file_path = '.data/latest-all.json.bz2'  # 6mb/s
+    # file_path_output = 'wikidata-latest.lance'
+    # schema = schema_wikidata
+    # parser = parse_wikidata
+    # reader = FileChunkReaderGZip(
+    #     file_path=file_path,
+    #     # fraction=0.05,
+    # )
 
-    reader = FileChunkReaderGZip(file_path=file_path, fraction=0.05)
+    file_path = '.data/wikidata5m_alias.tar.gz:wikidata5m_entity.txt'
+    file_path_output = 'wikidata-5m.lance'
+    schema = schema_wikidata_5m_entity
+    parser = parse_wikidata_5m_entity
+    reader = FileChunkReader(file_path=file_path)
+
     num_processes = max(1, mp.cpu_count())  # Use available CPU cores
     with mp.Pool(num_processes) as pool:
         for chunk in combine_chunks(
-                pool.imap_unordered(parse_wikidata, reader),
+                pool.imap_unordered(parser, reader),
         ):
-            lance.write_dataset(pd.DataFrame(chunk), file_path_output, schema=schema_wikidata, mode='append')
+            lance.write_dataset(pd.DataFrame(chunk), file_path_output, schema=schema, mode='append')
+
+    dataset = lance.dataset(file_path_output)
+    print("total rows:", dataset.count_rows())
