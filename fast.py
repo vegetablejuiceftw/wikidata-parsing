@@ -18,7 +18,7 @@ def read_bytes(filename, start_pos, end_pos):
         buffer = b''
         while start_pos < end_pos:
             result = f_gz.read(chunk_size)
-            new_start_pos = f_gz.tell()
+            new_start_pos = file.tell()
             change = new_start_pos - start_pos
             pbar.update(change)
             start_pos = new_start_pos
@@ -36,10 +36,10 @@ def parse(chunk: bytes):
     data = []
     for row in orjson.loads(chunk):
         label = row['labels'].get('en', {}).get('value', '')
-        if "Pew Charitable Trusts".lower() in label.lower():
-            print(row)
-        if "Q201296".lower() in row['id'].lower():
-            print(row)
+        # if "Pew Charitable Trusts".lower() in label.lower():
+        #     print(row)
+        # if "Q201296".lower() in row['id'].lower():
+            # print(row)
         if not label:
             continue
         if not row['type'] == 'item':

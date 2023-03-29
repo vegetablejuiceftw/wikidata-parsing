@@ -6,7 +6,7 @@ authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.12"
 orjson = "^3.8.6"
 tqdm = "^4.64.1"
 pyarrow = "^11.0.0"
@@ -15,6 +15,10 @@ ftfy = "^6.1.1"
 sparse-dot-topn = "^0.3.4"
 scikit-learn = "^1.2.2"
 spacy = "^3.5.1"
+mgzip = "^0.2.1"
+gensim = "^4.3.1"
+tensorflow = "^2.12.0"
+tensorflow-hub = "^0.13.0"
 
 
 [build-system]

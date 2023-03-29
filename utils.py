@@ -1,6 +1,7 @@
 import multiprocessing as mp
 import gzip, os, bz2
 from dataclasses import dataclass
+from typing import Iterable, Callable
 
 from tqdm.auto import tqdm
 
@@ -144,7 +145,7 @@ schema_wikidata_5m_entity = pa.schema([
 def parse_wikidata_5m_entity(chunk: bytes):
     data = []
     for row in chunk.decode('utf-8').splitlines():
-        idx, label, *aliases = row
+        idx, label, *aliases = row.split("\t")
         data.append(dict(
             id=idx,
             label=label,
@@ -165,32 +166,45 @@ def combine_chunks(chunks, item_count=1024 * 1024):
         yield result
 
 
-if __name__ == '__main__':
-    import lance
-    import pandas as pd
-
-    # file_path = '.data/latest-all.json.gz'  # 27mb/s
-    # # file_path = '.data/latest-all.json.bz2'  # 6mb/s
-    # file_path_output = 'wikidata-latest.lance'
-    # schema = schema_wikidata
-    # parser = parse_wikidata
-    # reader = FileChunkReaderGZip(
-    #     file_path=file_path,
-    #     # fraction=0.05,
-    # )
-
-    file_path = '.data/wikidata5m_alias.tar.gz:wikidata5m_entity.txt'
-    file_path_output = 'wikidata-5m.lance'
-    schema = schema_wikidata_5m_entity
-    parser = parse_wikidata_5m_entity
-    reader = FileChunkReader(file_path=file_path)
-
-    num_processes = max(1, mp.cpu_count())  # Use available CPU cores
+def run_function(iterator: Iterable, function: Callable, num_processes=None):
+    num_processes = num_processes or max(1, mp.cpu_count())  # Use available CPU cores
     with mp.Pool(num_processes) as pool:
-        for chunk in combine_chunks(
-                pool.imap_unordered(parser, reader),
-        ):
-            lance.write_dataset(pd.DataFrame(chunk), file_path_output, schema=schema, mode='append')
+        for e in pool.imap_unordered(function, iterator):
+            yield e
+
+
+import lance
+import pandas as pd
+
+
+def load_data(
+    reader: Iterable,
+    schema: pa.Schema,
+    parser: Callable,
+    file_path_output: str,
+):
+    for chunk in combine_chunks(run_function(reader, parser)):
+        lance.write_dataset(pd.DataFrame(chunk), file_path_output, schema=schema, mode='append')
 
     dataset = lance.dataset(file_path_output)
     print("total rows:", dataset.count_rows())
+
+
+if __name__ == '__main__':
+    load_data(
+        reader=FileChunkReaderGZip(
+            '.data/latest-all.json.gz',  # 27mb/s or 1h:17m
+            # '.data/latest-all.json.bz2',  # 6mb/s
+            # fraction=0.05,
+        ),
+        schema=schema_wikidata,
+        parser=parse_wikidata,
+        file_path_output='wikidata-latest.lance',
+    )
+
+    # load_data(
+    #     reader=FileChunkReader('.data/wikidata5m_alias.tar.gz:wikidata5m_entity.txt'),
+    #     schema=schema_wikidata_5m_entity,
+    #     parser=parse_wikidata_5m_entity,
+    #     file_path_output='wikidata-5m.lance',
+    # )
