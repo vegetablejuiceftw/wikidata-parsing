@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import gzip, os, bz2
 from dataclasses import dataclass
-from typing import Iterable, Callable
+from typing import Iterable, Callable, List
 
 from tqdm.auto import tqdm
 
@@ -13,6 +13,7 @@ class FileChunkReader:
     file_path: str
     fraction: float = None
     chunk_size: int = 1024 * 1024 * 8
+    pbar: bool = True
 
     def __iter__(self):
         file_size = os.path.getsize(self.file_path.split(':')[0])
@@ -29,6 +30,7 @@ class FileChunkReader:
                     yield c
 
         elif self.file_path.endswith('.gz'):
+            # with os.popen(f"cat {self.file_path} | gzip -d") as file:
             with gzip.open(self.file_path, 'rb', encoding=None, errors=None, newline=None, compresslevel=1) as file:
                 for c in self.loop(file, file_size):  # noqa
                     yield c
@@ -56,14 +58,21 @@ class FileChunkReader:
         start_pos = 0
         if self.fraction is not None:
             file_size = int(file_size * self.fraction)
-        pbar = tqdm(total=file_size, unit='B', unit_scale=True, desc='Processing chunks', mininterval=0.5)
+
+        pbar = (
+            tqdm(total=file_size, unit='B', unit_scale=True, desc='Processing chunks', mininterval=0.5, position=0)
+            if self.pbar else None
+        )
 
         buffer = b''
         while start_pos < file_size:
             result = file.read(self.chunk_size)
+            if not result:
+                break
             new_start_pos = file.fileobj.tell()  # noqa
             change = new_start_pos - start_pos
-            pbar.update(change)
+            if pbar:
+                pbar.update(change)
             start_pos = new_start_pos
 
             head, *tail = result.rsplit(b'\n', 1)
@@ -99,6 +108,90 @@ def parse_wikidata_simple(chunk: bytes):
     chunk = chunk.strip(b',')
     chunk = b"[" + chunk + b"]"
     rows = orjson.loads(chunk)
+    return rows
+
+import msgpack
+
+def parse_wikidata_simple_slim(chunk: bytes):
+    rows = []
+    for doc in parse_wikidata_simple(chunk):
+        # rows.append(
+        #     {
+        #         'id': doc['id']
+        #     }
+        # )
+        # continue
+        if 'descriptions' in doc:
+            del doc['descriptions']
+        if 'labels' in doc:
+            del doc['labels']
+        if 'aliases' in doc:
+            del doc['aliases']
+        # del doc['claims']
+        for claims in doc['claims'].values():
+            for claim in claims:
+                if 'id' in claim:
+                    del claim['id']
+                if 'rank' in claim:
+                    del claim['rank']
+                if 'references' in claim:
+                    for ref in claim['references']:
+                        if 'hash' in ref:
+                            del ref['hash']
+                if 'qualifiers' in claim:
+                    for qualifier in claim['qualifiers'].values():
+                        if 'hash' in qualifier:
+                            del qualifier['hash']
+
+    #     rows.append(doc)
+    # return msgpack.packb(rows)
+        rows.append(msgpack.packb(doc))
+    return rows
+
+
+def parse_wikidata_simple_turbo(chunk: bytes):
+    rows = []
+    for doc in parse_wikidata_simple(chunk):
+        label = doc['labels'].get('en', {}).get('value') or ''
+        description = doc['descriptions'].get('en', {}).get('value') or ''
+        aliases = tuple(
+            str(e['value'])
+            for e in doc['aliases'].get('en', [])
+        )
+        rows.append(msgpack.packb(dict(
+            id=str(doc['id']),
+            label=label,
+            aliases=aliases,
+            description=description,
+        )))
+    return rows
+
+import capnp
+wikidata = capnp.load('wikidata.capnp')
+
+def parse_wikidata_simple_proto(chunk: bytes):
+    rows = []
+    for doc in parse_wikidata_simple(chunk):
+        label = doc['labels'].get('en', {}).get('value') or ''
+        description = doc['descriptions'].get('en', {}).get('value') or ''
+        aliases = tuple(
+            str(e['value'])
+            for e in doc['aliases'].get('en', [])
+        )
+        data = dict(
+            id=str(doc['id']),
+            label=label,
+            aliases=aliases,
+            description=description,
+        )
+        message = wikidata.Entry.new_message(**data)
+        # wikidata.Entry.from_bytes(message.to_bytes())
+        # message.to_dict()
+        # rows.append(message.to_bytes_packed())
+        rows.append(message.to_bytes())
+        # rows.append(message)
+    # return [wikidata.Chunk.new_message(entries=rows).to_bytes()]
+
     return rows
 
 
@@ -178,10 +271,10 @@ import pandas as pd
 
 
 def load_data(
-    reader: Iterable,
-    schema: pa.Schema,
-    parser: Callable,
-    file_path_output: str,
+        reader: Iterable,
+        schema: pa.Schema,
+        parser: Callable,
+        file_path_output: str,
 ):
     for chunk in combine_chunks(run_function(reader, parser)):
         lance.write_dataset(pd.DataFrame(chunk), file_path_output, schema=schema, mode='append')
@@ -197,8 +290,8 @@ if __name__ == '__main__':
             # '.data/latest-all.json.bz2',  # 6mb/s
             # fraction=0.05,
         ),
-        schema=schema_wikidata,
         parser=parse_wikidata,
+        schema=schema_wikidata,
         file_path_output='wikidata-latest.lance',
     )
 

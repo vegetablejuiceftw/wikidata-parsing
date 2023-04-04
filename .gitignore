@@ -2,3 +2,11 @@
 *.parquet
 *.lance
 .data/*
+.data/deeptype/*
+/vec_data_full.lance (copy)/
+*.dbm
+*.pickle
+*.pp
+*.p
+*.mp
+*.pp.gz

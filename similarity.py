@@ -19,6 +19,8 @@ def ngrams(string, n=3):
     string = re.sub(r"[)(.|\[\]{}']", '', string)
     string = re.sub(r'[,-./]\s*', ' ', string)
     string = string.replace('&', 'and')
+    if n is None:
+        return string
     return tuple(
         string[i:i + n]
         for i in range(0, max(len(string) - 2, 1))
@@ -26,8 +28,9 @@ def ngrams(string, n=3):
 
 
 print('All 3-grams in "Department":')
-print(ngrams('Department Pants'))
+print(ngrams('Department of Pants'))
 print(ngrams('OK'))
+print(ngrams('Department (of) Pants', n=None))
 
 
 ##
@@ -224,7 +227,7 @@ import time
 import lance
 from sklearn.feature_extraction.text import TfidfVectorizer, HashingVectorizer
 
-uri = "vec_data.lance"
+uri = "vec_data-hash.lance"
 
 vectorizer = HashingVectorizer(analyzer=ngrams, n_features=2 ** 13)
 
@@ -349,5 +352,67 @@ def iterate_chunks(array, batch=512):
         yield tuple(range(i, i + batch)), row_array
 
 # m = embed(org_names[:1024*16*4])
-for indicies, chunk in iterate_chunks(org_names, 1024*16*4):
-    embed(chunk)
+# for indicies, chunk in iterate_chunks(org_names, 1024*16*4):
+
+from lance.vector import vec_to_table
+from utils import run_function, combine_chunks
+
+uri = "vec_data_u.lance"
+for indices, chunk in iterate_chunks(org_names, batch=8192):
+    chunk = [ngrams(s, n=None) for s in chunk]
+    rows = embed(chunk)
+    table = vec_to_table(dict(zip(indices, rows)), )
+    lance.write_dataset(table, uri, mode="append")
+
+##
+sift1m = lance.dataset(uri)
+print(sift1m.schema)
+sift1m.create_index(
+    "vector",
+    index_type="IVF_PQ",
+    num_partitions=512,  # IVF
+    num_sub_vectors=16,
+    metric='cosine',  # ?
+)
+##
+print(ngrams('Department Pants', n=999))
+
+
+##
+import time
+import lance
+
+uri = "vec_data_u.lance"
+
+t1 = time.time()
+sift1m = lance.dataset(uri)
+
+noun_phrases = ['addition', 'Andrew', 'his original research findings', 'top peer-reviewed journals', 'Nature', 'Cell',
+                'Neuron', 'Current Biology', 'His work', 'major publications', 'Science magazine', 'Discover magazine',
+                'Scientific American', 'Time', 'the New York Times', 'He', 'a regular member', 'Health', 'a Fellow',
+                'the McKnight Foundation', 'the Pew Charitable Trusts', 'Pew Charitable Trusts']
+noun_phrases = ['Pew Char table Trust',  'McKnight Foundation']
+
+results = {}
+for phrase in noun_phrases:
+    query = embed([phrase])[0].numpy()
+    # print(query.shape, query.device)
+    results[phrase] = []
+    tbl = sift1m.to_table(columns=["id"], nearest={"column": "vector", "q": query, "k": 5, "refine_factor": 15})
+    for record in tbl.to_pandas().to_records():
+        _, idx, _v, distance = record
+        # if distance < 0.5:
+        results[phrase].append(org_names[idx])
+
+t = time.time() - t1
+print("SELFTIMED:", t)
+print("SIZE:", sift1m.count_rows())
+for phrase, result in results.items():
+    if result:
+        print(phrase, result)
+
+##
+from polyleven import levenshtein
+# [t for t in tqdm(org_names) if levenshtein(t, "Pew Chair table Trusts") < 3]
+for i in tqdm(noun_phrases):
+    print([t for t in tqdm(org_names) if "Pew C" in t])
