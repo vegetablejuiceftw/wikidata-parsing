@@ -28,13 +28,13 @@ with dbm.open(file_path, 'n') as db:
 
 ##
 with dbm.open(file_path, 'r') as db:
-    index = db.get('Q43054')
+    index = int.from_bytes(db.get('Q43054'), 'big')
     print('Q43054', index)
-    print(dataset.take([i]))
+    print(dataset.take([index]))
 ##
 import time
 test = (
-    'Qello', 'Q32043', 'Q353204', 'Q43111453', 'Q48783573', 'Q28036028', 'Q4065799', 'Q111905430', 'Q114507595',
+    'Q32043', 'Q353204', 'Q43111453', 'Q48783573', 'Q28036028', 'Q4065799', 'Q111905430', 'Q114507595',
     'Q7509664', 'Q114539448', 'Q59167536', 'Q60465340', 'Q1813536', 'Q70867427', 'Q55527801', 'Q43104343', 'Q33616093',
     'Q107307831', 'Q96695499', 'Q38030741', 'Q113852591', 'Q49156570', 'Q107196626', 'Q180445', 'Q348620', 'Q20505218',
     'Q2349697', 'Q863823', 'Q3664265', 'Q109502754', 'Q43054', 'Q415060', 'Q7002467', 'Q107306040', 'Q57265286',
@@ -53,9 +53,12 @@ print(len(test))
 with dbm.open('dict.dbm', 'r') as db:
     t1 = time.time()
     results = [
-        db.get(key)
+        (db.get(key), 'big')
         for key in test
     ]
+    # dataset.take(results)
     t = time.time() - t1
     print("SELFTIMED:", t)
     print(results)
+
+# 0.0009s for 120
