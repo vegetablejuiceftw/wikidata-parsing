@@ -305,3 +305,15 @@ https://whoosh.readthedocs.io/en/latest/spelling.html “Did you mean... ?” Co
 https://github.com/quickwit-oss/tantivy
 https://github.com/valeriansaliou/sonic
 https://github.com/zincsearch/zincsearch
+
+
+-----
+
+# DBM
+0.0009s for 120 wiki-id queries on 86m item map.  
+5 hours to generate (bug?)
+
+# PDICT
+import time
+0.0018s to 120 wiki-id queries on 86m item map.  
+9 minutes to generate

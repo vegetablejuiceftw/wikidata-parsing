@@ -1,10 +1,5 @@
 ##
 import lance
-
-# dataset = lance.dataset("wikidata-5m.lance")
-dataset = lance.dataset("wikidata-latest-86m.lance")
-
-##
 from tqdm.auto import tqdm
 import dbm
 
@@ -14,23 +9,30 @@ def run(*columns):
         for row in item.to_pylist():
             yield row
 
-rows = list(tqdm((e['id'] for e in run('id')), total=dataset.count_rows()))
-##
-i = 57
-print(i.to_bytes(2, 'big'))
-print(int.from_bytes(i.to_bytes(2, 'big'), 'big'))
+# dataset = lance.dataset("wikidata-5m.lance")
+dataset = lance.dataset("wikidata-latest-86m.lance")
+
 ##
 file_path = 'dict-index.dbm'
 with dbm.open(file_path, 'n') as db:
-    for i, row in tqdm(enumerate(rows), total=dataset.count_rows()):
+    for i, row in tqdm(enumerate(e['id'] for e in run('id')), total=dataset.count_rows()):
         # db[row['id']] = i
         db[row] = i.to_bytes(4, 'big')
-
 ##
 with dbm.open(file_path, 'r') as db:
     index = int.from_bytes(db.get('Q43054'), 'big')
     print('Q43054', index)
     print(dataset.take([index]))
+
+##
+import pdict
+
+file_path = 'dict-index.pdict'
+db = pdict.create(file_path, capacity=dataset.count_rows())
+for i, row in tqdm(enumerate(e['id'] for e in run('id')), total=dataset.count_rows()):
+    db[row] = i
+db.close()
+
 ##
 import time
 test = (
@@ -50,10 +52,13 @@ test = (
     'Q16801251', 'Q7640493', 'Q55230423', 'Q30296836',
 )
 print(len(test))
-with dbm.open('dict.dbm', 'r') as db:
+
+##
+# 0.0009s for 120
+with dbm.open('dict-index.dbm', 'r') as db:
     t1 = time.time()
     results = [
-        (db.get(key), 'big')
+        db.get(key)
         for key in test
     ]
     # dataset.take(results)
@@ -61,4 +66,17 @@ with dbm.open('dict.dbm', 'r') as db:
     print("SELFTIMED:", t)
     print(results)
 
-# 0.0009s for 120
+
+## >>> # open existing dictionary
+db = pdict.Pdict('dict-index.pdict')
+t1 = time.time()
+results = [
+    db.get(key)
+    for key in test
+]
+t = time.time() - t1
+print("SELFTIMED:", t)
+print(results)
+data = dataset.take([v for v in results if v is not None])
+print(data)
+db.close()
