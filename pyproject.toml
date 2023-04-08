@@ -26,6 +26,10 @@ progressbar2 = "^4.2.0"
 pycapnp = "^1.3.0"
 marisa-trie = "^0.8.0"
 pdict = {git = "https://github.com/AleksTk/pdict.git"}
+genson = "^1.2.2"
+pysos = "^1.3.0"
+semidbm = "^0.5.1"
+lmdb = "^1.4.1"
 
 
 [build-system]

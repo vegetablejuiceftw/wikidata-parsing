@@ -34,6 +34,28 @@ for i, row in tqdm(enumerate(e['id'] for e in run('id')), total=dataset.count_ro
 db.close()
 
 ##
+import pysos
+db = pysos.Dict('dict-index.pysos')
+for i, row in tqdm(enumerate(e['id'] for e in run('id')), total=dataset.count_rows()):
+    db[row] = i
+
+##
+import semidbm
+db = semidbm.open('dict-index.semidb', 'c')
+for i, row in tqdm(enumerate(e['id'] for e in run('id')), total=dataset.count_rows()):
+    db[row] = i.to_bytes(4, 'big')
+
+
+##
+import lmdb
+
+env = lmdb.open('dict-index.lmdb', map_size=dataset.count_rows() * 64, metasync=False, sync=False, map_async=True)
+with env.begin(write=True) as txn:
+    for i, row in tqdm(enumerate(e['id'] for e in run('id')), total=dataset.count_rows()):
+        txn.put(row.encode(), i.to_bytes(4, 'big'))
+env.sync(True)
+
+##
 import time
 test = (
     'Q32043', 'Q353204', 'Q43111453', 'Q48783573', 'Q28036028', 'Q4065799', 'Q111905430', 'Q114507595',
@@ -80,3 +102,44 @@ print(results)
 data = dataset.take([v for v in results if v is not None])
 print(data)
 db.close()
+##
+# db = pysos.Dict('dict-index.pysos')
+print("Loaded")
+t1 = time.time()
+results = [
+    db.get(key)
+    for key in test
+]
+t = time.time() - t1
+print("SELFTIMED:", t)
+print(results)
+data = dataset.take([v for v in results if v is not None])
+print(data)
+##
+# db = semidbm.open('dict-index.semidb', 'r')
+print("Loaded")
+t1 = time.time()
+results = [
+    int.from_bytes(db[key], byteorder='big')
+    for key in test
+]
+t = time.time() - t1
+print("SELFTIMED:", t)
+print(results)
+data = dataset.take([v for v in results if v is not None])
+print(data)
+##
+import lmdb
+env = lmdb.Environment('dict-index.lmdb', readonly=True )
+with env.begin() as txn:
+    print("Loaded")
+    t1 = time.time()
+    results = [
+        int.from_bytes(txn.get(key.encode()), byteorder='big')
+        for key in test
+    ]
+    t = time.time() - t1
+    print("SELFTIMED:", t)
+    print(results)
+    data = dataset.take([v for v in results if v is not None])
+    print(data)

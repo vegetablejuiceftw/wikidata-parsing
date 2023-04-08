@@ -311,9 +311,24 @@ https://github.com/zincsearch/zincsearch
 
 # DBM
 0.0009s for 120 wiki-id queries on 86m item map.  
-5 hours to generate (bug?)
+10GB 5 hours to generate (bug?) 
 
 # PDICT
 import time
 0.0018s to 120 wiki-id queries on 86m item map.  
-9 minutes to generate
+2GB 9 minutes to generate
+
+# Pysos 
+Slow index memory load, but fast loads, heavy memory usage (16GB?)
+1.7GB 10min to generate
+0.0005 for 120 wiki-id queries on 86m item map.  
+
+# semidbm 
+Slow index memory load, but fast loads, heavy memory usage (16GB?)
+2GB 10min to generate
+0.0003 for 120 wiki-id queries on 86m item map.  
+
+# lmdb 
+Fast write
+2.9GB 2min to generate
+0.0010 for 120 wiki-id queries on 86m item map.  
