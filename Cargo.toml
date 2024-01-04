@@ -1,0 +1,19 @@
+[package]
+name = "wdp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+flate2 ={ version = "*", features = ["zlib-ng"], default-features = false }
+rayon = "*"
+rmp-serde = "*"
+indicatif = "0.17.7"
+time = "0.3.30"
+#rmpv = "1.0.1"
+rand = "0.8.5"
+lazy_static = "1.4.0"
+
+[profile.dev]
+opt-level = 3

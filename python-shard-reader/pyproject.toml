@@ -1,0 +1,12 @@
+[tool.poetry]
+name = "python-shard-reader"
+version = "0.1.0"
+description = ""
+authors = ["Fred <vegetablejuiceftw@gmail.com.com>"]
+packages = []
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+requests = "*"
+msgpack = "*"
+tqdm = "*"
